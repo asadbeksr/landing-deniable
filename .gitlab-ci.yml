@@ -1,0 +1,46 @@
+before_script:
+    - echo $CI_REGISTRY_PASSWORD | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+
+stages:
+  - build
+  - deploy
+
+variables:
+  SERVICE: react-frontend
+
+build_prod:
+  stage: build
+  script:
+    - make build-image TAG=$CI_PIPELINE_IID APP=$CI_PROJECT_NAME PROJECT_NAME=$CI_PROJECT_NAMESPACE REGISTRY=$CI_REGISTRY ENV_TAG=latest
+    - make push-image TAG=$CI_PIPELINE_IID CI_REGISTRY=$CI_REGISTRY  CI_REGISTRY_USER=$CI_REGISTRY_USER CI_REGISTRY_PASSWORD=$CI_REGISTRY_PASSWORD SERVICE_NAME=$CI_PROJECT_NAME PROJECT_NAME=$CI_PROJECT_NAMESPACE REGISTRY=$CI_REGISTRY ENV_TAG=latest
+  only:
+  - main
+
+build_test:
+  stage: build
+  script:
+      - rm -rf .env.production || true
+      - mv .env.staging .env.production
+      - make build-image TAG=$CI_PIPELINE_IID APP=$CI_PROJECT_NAME PROJECT_NAME=$CI_PROJECT_NAMESPACE REGISTRY=$CI_REGISTRY ENV_TAG=test
+      - make push-image TAG=$CI_PIPELINE_IID CI_REGISTRY=$CI_REGISTRY  CI_REGISTRY_USER=$CI_REGISTRY_USER CI_REGISTRY_PASSWORD=$CI_REGISTRY_PASSWORD SERVICE_NAME=$CI_PROJECT_NAME PROJECT_NAME=$CI_PROJECT_NAMESPACE REGISTRY=$CI_REGISTRY ENV_TAG=test
+  only:
+  - staging
+
+deploy_prod:
+  before_script:
+      - export KUBECONFIG=~/.kube/deniable
+  stage: deploy
+  script:
+      - kubectl set image deployment/$SERVICE $SERVICE=$CI_REGISTRY/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME:$CI_PIPELINE_IID -n deniable
+  only:
+      - main
+
+# deploy_test:
+#   before_script:
+#       - export KUBECONFIG=~/.kube/test
+#   stage: deploy
+#   script:
+#       - kubectl set image deployment/$SERVICE $SERVICE=$CI_REGISTRY/$CI_PROJECT_NAMESPACE/$CI_PROJECT_NAME:$CI_PIPELINE_IID -n pastoral-test
+#   only:
+#   - staging
+
